@@ -13,31 +13,50 @@ class BarangSeeder extends Seeder
      */
     public function run(): void
     {
-        Barang::create([
-            'kode_barang' => 'BRG001',
-            'nama_barang' => 'Keyboard Mechanical',
-            'harga_barang' => '350000',
-            'foto' => 'keyboard.jpg',
-            'stok' => 20,
-            'rating' => 4.5,
-        ]);
+        $barangs = [
+            [
+                'kode_barang' => 'BRG001',
+                'nama_barang' => 'Pisang Segar',
+                'harga_barang' => 12000,
+                'stok' => 100,
+                'foto' => '/images/thumb-bananas.png',
+                'rating' => 4.5,
+            ],
+            [
+                'kode_barang' => 'BRG002',
+                'nama_barang' => 'Biskuit REnyah',
+                'harga_barang' => 18000,
+                'stok' => 80,
+                'foto' => '/images/thumb-biscuits.png',
+                'rating' => 4.2,
+            ],
+            [
+                'kode_barang' => 'BRG003',
+                'nama_barang' => 'Timun Segar',
+                'harga_barang' => 10000,
+                'stok' => 120,
+                'foto' => '/images/thumb-cucumber.png',
+                'rating' => 4.1,
+            ],
+            [
+                'kode_barang' => 'BRG004',
+                'nama_barang' => 'Susu Murni',
+                'harga_barang' => 15000,
+                'stok' => 90,
+                'foto' => '/images/thumb-milk.png',
+                'rating' => 4.3,
+            ],
+        ];
 
-        Barang::create([
-            'kode_barang' => 'BRG002',
-            'nama_barang' => 'Mouse Wireless',
-            'harga_barang' => '150000',
-            'foto' => 'mouse.jpg',
-            'stok' => 35,
-            'rating' => 4.3,
-        ]);
-
-        Barang::create([
-            'kode_barang' => 'BRG003',
-            'nama_barang' => 'Monitor LED 24"',
-            'harga_barang' => '1250000',
-            'foto' => 'monitor.jpg',
-            'stok' => 10,
-            'rating' => 4.8,
-        ]);
+        foreach ($barangs as $barang) {
+            Barang::create([
+                'kode_barang' => $barang['kode_barang'],
+                'nama_barang' => $barang['nama_barang'],
+                'harga_barang' => $barang['harga_barang'],
+                'stok' => $barang['stok'],
+                'foto' => $barang['foto'],
+                'rating' => $barang['rating'],
+            ]);
+        }
     }
 }
