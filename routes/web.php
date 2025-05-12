@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CobaMidtransController;
 use App\Http\Controllers\KeranjangController;
+use App\Http\Controllers\PengirimanEmailController;
 use App\Http\Middleware\CustomerMiddleware;
 use Illuminate\Support\Facades\Route;
 
@@ -32,3 +33,5 @@ Route::get('/lihatriwayat', [KeranjangController::class, 'lihatriwayat'])->middl
 Route::get('/cek_status_pembayaran_pg', [KeranjangController::class, 'cek_status_pembayaran_pg']);
 
 Route::get('/cekmidtrans', [CobaMidtransController::class, 'cekmidtrans']);
+
+Route::get('/proses_kirim_email_pembayaran', [PengirimanEmailController::class, 'proses_kirim_email_pembayaran']);

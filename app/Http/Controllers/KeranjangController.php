@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 
 use App\Models\Barang; //untuk akses kelas model barang
+
 use App\Models\Penjualan; //untuk akses kelas model penjualan
 use App\Models\PenjualanBarang; //untuk akses kelas model penjualan
 use App\Models\Pembayaran; //untuk akses kelas model pembayaran
@@ -14,9 +15,9 @@ use Illuminate\Support\Facades\Auth; //agar bisa mengakses session user_id dari 
 
 class KeranjangController extends Controller
 {
-    // tampilan galeri daftar barang
     public function daftarbarang()
     {
+        // ambil session
         $id_user = Auth::user()->id;
 
         // dapatkan id_pembeli dari user_id di tabel users sesuai data yang login
@@ -28,25 +29,6 @@ class KeranjangController extends Controller
         // ambil data barang
         $barang = Barang::all();
 
-        // query total belanja yang belum terbayar
-        // $barangdibeli = Penjualan::where('pembeli_id', $id_pembeli)
-        //                 ->where('pembayaran', 0)
-        //                 ->first();
-        // $barangdibeli = DB::table('penjualan')
-        //                 ->join('pembayaran', 'penjualan.id', '=', 'pembayaran.penjualan_id')
-        //                 ->where('penjualan.pembeli_id', '=', $id_pembeli) 
-        //                 ->where(function($query) {
-        //                     $query->where('pembayaran.gross_amount', 0)
-        //                           ->orWhere(function($q) {
-        //                               $q->where('pembayaran.status_code', '!=', 200)
-        //                                 ->where('pembayaran.jenis_pembayaran', 'pg');
-        //                           });
-        //                 })
-        //                 ->selectRaw('IFNULL(COUNT(penjualan.tagihan), 0) as tagihan')
-        //                 ->value('tagihan');
-
-        // dd(var_dump($barangdibeli));
-        // jumlah barang dibeli
         $jmlbarangdibeli = DB::table('penjualan')
             ->join('penjualan_barang', 'penjualan.id', '=', 'penjualan_barang.penjualan_id')
             ->join('pembeli', 'penjualan.pembeli_id', '=', 'pembeli.id')
@@ -287,13 +269,14 @@ class KeranjangController extends Controller
         $login = env('MIDTRANS_SERVER_KEY');
         $password = '';
         if (isset($odid)) {
-            $parts = explode('-', $odid);
-            $substring = $parts[0] . '-' . $parts[1];
-            $orderid = $substring;
+            // $parts = explode('-', $odid);
+            // $substring = $parts[0] . '-' . $parts[1];
+            // $orderid = $substring;
+            $orderid = $odid;
         } else {
             $orderid = $kode_faktur . '-' . date('YmdHis'); //FORMAT
         }
-
+        // dd($odid);
         $URL =  'https://api.sandbox.midtrans.com/v2/' . $orderid . '/status';
         curl_setopt($ch, CURLOPT_URL, $URL);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
@@ -303,150 +286,222 @@ class KeranjangController extends Controller
         curl_close($ch);
         $outputjson = json_decode($output, true); //parsing json dalam bentuk assosiative array
         // return $outputjson;
-
+        // dd($outputjson);
         // ambil statusnya
-        if ($outputjson['status_code'] == 404 or in_array($outputjson['transaction_status'], ['expire', 'cancel', 'deny'])) {
-            // echo "transaksi tidak ditemukan diserver midtrans ";
-            // cek jika jml datanya 0 maka jangan menjalankan payment gateway
-            if ($ttl > 0) {
-                // proses generate token payment gateway
-                $order_id = $kode_faktur . '-' . date('YmdHis');
+        if (isset($outputjson)) {
+            // awal
+            if ($outputjson['status_code'] == '404' or in_array($outputjson['transaction_status'], ['expire', 'cancel', 'deny'])) {
+                // echo "transaksi tidak ditemukan diserver midtrans ";
+                // cek jika jml datanya 0 maka jangan menjalankan payment gateway
+                if ($ttl > 0) {
+                    // proses generate token payment gateway
+                    $order_id = $kode_faktur . '-' . date('YmdHis');
 
 
-                $myArray = array(); //untuk menyimpan objek array
-                $i = 1;
-                foreach ($barang as $k):
-                    // untuk data item detail
-                    // kita perlu membuat objek dulu kemudian di masukkan ke array
-                    $foo = array(
-                        'id' => $i,
-                        'price' => $k->harga_jual,
-                        'quantity' => $k->total_barang,
-                        'name' => $k->nama_barang,
+                    $myArray = array(); //untuk menyimpan objek array
+                    $i = 1;
+                    foreach ($barang as $k):
+                        // untuk data item detail
+                        // kita perlu membuat objek dulu kemudian di masukkan ke array
+                        $foo = array(
+                            'id' => $i,
+                            'price' => $k->harga_jual,
+                            'quantity' => $k->total_barang,
+                            'name' => $k->nama_barang,
 
+                        );
+                        $i++;
+                        // tambahkan ke myarray
+                        array_push($myArray, $foo);
+                    endforeach;
+
+                    \Midtrans\Config::$serverKey = env('MIDTRANS_SERVER_KEY');
+                    // Set to Development/Sandbox Environment (default). Set to true for Production Environment (accept real transaction).
+                    \Midtrans\Config::$isProduction = false;
+                    // Set sanitization on (default)
+                    \Midtrans\Config::$isSanitized = true;
+                    // Set 3DS transaction for credit card to true
+                    \Midtrans\Config::$is3ds = true;
+
+                    $params = array(
+                        'transaction_details' => array(
+                            'order_id' => $order_id,
+                            'gross_amount' => $ttl, //gross amount diisi total tagihan
+                        ),
+                        'item_details' => $myArray,
+                        'expiry' => [
+                            'start_time' => date("Y-m-d H:i:s O"), // sekarang
+                            'unit' => 'minutes', // bisa 'minutes', 'hours', atau 'days'
+                            'duration' => 20 // expired dalam 60 menit
+                        ]
                     );
-                    $i++;
-                    // tambahkan ke myarray
-                    array_push($myArray, $foo);
-                endforeach;
 
-                \Midtrans\Config::$serverKey = env('MIDTRANS_SERVER_KEY');
-                // Set to Development/Sandbox Environment (default). Set to true for Production Environment (accept real transaction).
-                \Midtrans\Config::$isProduction = false;
-                // Set sanitization on (default)
-                \Midtrans\Config::$isSanitized = true;
-                // Set 3DS transaction for credit card to true
-                \Midtrans\Config::$is3ds = true;
+                    $snapToken = \Midtrans\Snap::getSnapToken($params);
 
-                $params = array(
-                    'transaction_details' => array(
-                        'order_id' => $order_id,
-                        'gross_amount' => $ttl, //gross amount diisi total tagihan
-                    ),
-                    'item_details' => $myArray,
-                    'expiry' => [
-                        'start_time' => date("Y-m-d H:i:s O"), // sekarang
-                        'unit' => 'minutes', // bisa 'minutes', 'hours', atau 'days'
-                        'duration' => 2 // expired dalam 60 menit
-                    ]
-                );
+                    $pembayaran = Pembayaran::updateOrCreate(
+                        ['penjualan_id' => $idpenjualan], // Cek apakah id penjualan sudah ada
+                        [
+                            'tgl_bayar'        => now(),
+                            'jenis_pembayaran' => 'pg', // Payment Gateway
+                            'order_id'         => $order_id,
+                            'gross_amount'     => $ttl,
+                            'status_code'      => '201', // 201 = Pending
+                            'status_message'   => 'Pending payment', // Status awal
+                            'transaction_id' => $snapToken, //snap tokennya di simpan di transaction id
 
-                $snapToken = \Midtrans\Snap::getSnapToken($params);
+                        ]
+                    );
 
-                $pembayaran = Pembayaran::updateOrCreate(
-                    ['penjualan_id' => $idpenjualan], // Cek apakah id penjualan sudah ada
-                    [
-                        'tgl_bayar'        => now(),
-                        'jenis_pembayaran' => 'pg', // Payment Gateway
-                        'order_id'         => $order_id,
-                        'gross_amount'     => $ttl,
-                        'status_code'      => '201', // 201 = Pending
-                        'status_message'   => 'Pending payment', // Status awal
-                        'transaction_id' => $snapToken, //snap tokennya di simpan di transaction id
-
-                    ]
-                );
-
-                return view(
-                    'keranjang',
-                    [
-                        'barang' => $barang,
-                        'total_tagihan' => $ttl,
-                        'jml_brg' => $jml_brg,
-                        'snap_token' => $snapToken,
-                    ]
-                );
+                    return view(
+                        'keranjang',
+                        [
+                            'barang' => $barang,
+                            'total_tagihan' => $ttl,
+                            'jml_brg' => $jml_brg,
+                            'snap_token' => $snapToken,
+                        ]
+                    );
+                } else {
+                    // kalau transaksi kosong diarahkan saja ke depan
+                    return redirect('/depan');
+                }
             } else {
-                // kalau transaksi kosong diarahkan saja ke depan
-                return redirect('/');
+                // echo "transaksi ditemukan diserver midtrans, maka tinggal bayar";
+
+                $tagihan = DB::table('penjualan')
+                    ->join('pembayaran', 'penjualan.id', '=', 'pembayaran.penjualan_id')
+                    ->select(DB::raw('transaction_id'))
+                    ->where('penjualan.pembeli_id', '=', $id_pembeli)
+                    ->where(function ($query) {
+                        $query->where('pembayaran.gross_amount', 0)
+                            ->orWhere(function ($q) {
+                                $q->where('pembayaran.status_code', '!=', 200)
+                                    ->where('pembayaran.jenis_pembayaran', 'pg');
+                            });
+                    })
+                    ->first();
+
+                $barang = DB::table('penjualan')
+                    ->join('penjualan_barang', 'penjualan.id', '=', 'penjualan_barang.penjualan_id')
+                    ->join('pembayaran', 'penjualan.id', '=', 'pembayaran.penjualan_id')
+                    ->join('barang', 'penjualan_barang.barang_id', '=', 'barang.id')
+                    ->join('pembeli', 'penjualan.pembeli_id', '=', 'pembeli.id')
+                    ->select(
+                        'penjualan.id',
+                        'penjualan.no_faktur',
+                        'pembeli.nama_pembeli',
+                        'penjualan_barang.barang_id',
+                        'barang.nama_barang',
+                        'penjualan_barang.harga_jual',
+                        'barang.foto',
+                        DB::raw('SUM(penjualan_barang.jml) as total_barang'),
+                        DB::raw('SUM(penjualan_barang.harga_jual * penjualan_barang.jml) as total_belanja')
+                    )
+                    ->where('penjualan.pembeli_id', '=', $id_pembeli)
+                    ->where(function ($query) {
+                        $query->where('pembayaran.gross_amount', 0)
+                            ->orWhere(function ($q) {
+                                $q->where('pembayaran.status_code', '!=', 200)
+                                    ->where('pembayaran.jenis_pembayaran', 'pg');
+                            });
+                    })
+                    ->groupBy(
+                        'penjualan.id',
+                        'penjualan.no_faktur',
+                        'pembeli.nama_pembeli',
+                        'penjualan_barang.barang_id',
+                        'barang.nama_barang',
+                        'penjualan_barang.harga_jual',
+                        'barang.foto',
+                    )
+                    ->get();
+
+                $ttl = 0;
+                $jml_brg = 0;
+                $kode_faktur = '';
+                foreach ($barang as $p) {
+                    $ttl += $p->total_belanja;
+                    $jml_brg += 1;
+                    $kode_faktur = $p->no_faktur;
+                    $idpenjualan = $p->id;
+                }
+
+                return view('keranjang', [
+                    'barang' => $barang,
+                    'total_tagihan' => $ttl,
+                    'jml_brg' => $jml_brg,
+                    'snap_token' => $tagihan->transaction_id
+                ]);
             }
+            // akhir
         } else {
-            // echo "transaksi ditemukan diserver midtrans, maka tinggal bayar";
+            // jika sudah kadaluarsa tapi tidak ditemukan di midtrans
+            $order_id = $kode_faktur . '-' . date('YmdHis');
 
-            $tagihan = DB::table('penjualan')
-                ->join('pembayaran', 'penjualan.id', '=', 'pembayaran.penjualan_id')
-                ->select(DB::raw('transaction_id'))
-                ->where('penjualan.pembeli_id', '=', $id_pembeli)
-                ->where(function ($query) {
-                    $query->where('pembayaran.gross_amount', 0)
-                        ->orWhere(function ($q) {
-                            $q->where('pembayaran.status_code', '!=', 200)
-                                ->where('pembayaran.jenis_pembayaran', 'pg');
-                        });
-                })
-                ->first();
 
-            $barang = DB::table('penjualan')
-                ->join('penjualan_barang', 'penjualan.id', '=', 'penjualan_barang.penjualan_id')
-                ->join('pembayaran', 'penjualan.id', '=', 'pembayaran.penjualan_id')
-                ->join('barang', 'penjualan_barang.barang_id', '=', 'barang.id')
-                ->join('pembeli', 'penjualan.pembeli_id', '=', 'pembeli.id')
-                ->select(
-                    'penjualan.id',
-                    'penjualan.no_faktur',
-                    'pembeli.nama_pembeli',
-                    'penjualan_barang.barang_id',
-                    'barang.nama_barang',
-                    'penjualan_barang.harga_jual',
-                    'barang.foto',
-                    DB::raw('SUM(penjualan_barang.jml) as total_barang'),
-                    DB::raw('SUM(penjualan_barang.harga_jual * penjualan_barang.jml) as total_belanja')
-                )
-                ->where('penjualan.pembeli_id', '=', $id_pembeli)
-                ->where(function ($query) {
-                    $query->where('pembayaran.gross_amount', 0)
-                        ->orWhere(function ($q) {
-                            $q->where('pembayaran.status_code', '!=', 200)
-                                ->where('pembayaran.jenis_pembayaran', 'pg');
-                        });
-                })
-                ->groupBy(
-                    'penjualan.id',
-                    'penjualan.no_faktur',
-                    'pembeli.nama_pembeli',
-                    'penjualan_barang.barang_id',
-                    'barang.nama_barang',
-                    'penjualan_barang.harga_jual',
-                    'barang.foto',
-                )
-                ->get();
+            $myArray = array(); //untuk menyimpan objek array
+            $i = 1;
+            foreach ($barang as $k):
+                // untuk data item detail
+                // kita perlu membuat objek dulu kemudian di masukkan ke array
+                $foo = array(
+                    'id' => $i,
+                    'price' => $k->harga_jual,
+                    'quantity' => $k->total_barang,
+                    'name' => $k->nama_barang,
 
-            $ttl = 0;
-            $jml_brg = 0;
-            $kode_faktur = '';
-            foreach ($barang as $p) {
-                $ttl += $p->total_belanja;
-                $jml_brg += 1;
-                $kode_faktur = $p->no_faktur;
-                $idpenjualan = $p->id;
-            }
+                );
+                $i++;
+                // tambahkan ke myarray
+                array_push($myArray, $foo);
+            endforeach;
 
-            return view('keranjang', [
-                'barang' => $barang,
-                'total_tagihan' => $ttl,
-                'jml_brg' => $jml_brg,
-                'snap_token' => $tagihan->transaction_id
-            ]);
+            \Midtrans\Config::$serverKey = env('MIDTRANS_SERVER_KEY');
+            // Set to Development/Sandbox Environment (default). Set to true for Production Environment (accept real transaction).
+            \Midtrans\Config::$isProduction = false;
+            // Set sanitization on (default)
+            \Midtrans\Config::$isSanitized = true;
+            // Set 3DS transaction for credit card to true
+            \Midtrans\Config::$is3ds = true;
+
+            $params = array(
+                'transaction_details' => array(
+                    'order_id' => $order_id,
+                    'gross_amount' => $ttl, //gross amount diisi total tagihan
+                ),
+                'item_details' => $myArray,
+                'expiry' => [
+                    'start_time' => date("Y-m-d H:i:s O"), // sekarang
+                    'unit' => 'minutes', // bisa 'minutes', 'hours', atau 'days'
+                    'duration' => 20 // expired dalam 60 menit
+                ]
+            );
+
+            $snapToken = \Midtrans\Snap::getSnapToken($params);
+
+            $pembayaran = Pembayaran::updateOrCreate(
+                ['penjualan_id' => $idpenjualan], // Cek apakah id penjualan sudah ada
+                [
+                    'tgl_bayar'        => now(),
+                    'jenis_pembayaran' => 'pg', // Payment Gateway
+                    'order_id'         => $order_id,
+                    'gross_amount'     => $ttl,
+                    'status_code'      => '201', // 201 = Pending
+                    'status_message'   => 'Pending payment', // Status awal
+                    'transaction_id' => $snapToken, //snap tokennya di simpan di transaction id
+
+                ]
+            );
+
+            return view(
+                'keranjang',
+                [
+                    'barang' => $barang,
+                    'total_tagihan' => $ttl,
+                    'jml_brg' => $jml_brg,
+                    'snap_token' => $snapToken,
+                ]
+            );
         }
     }
 
@@ -537,11 +592,14 @@ class KeranjangController extends Controller
         foreach ($pembayaranPending as $ks) {
             array_push($id, $ks->order_id);
             // echo $ks->order_id;
+
             // untuk mendapatkan no_faktur dari pola F-0000002-20250406 => F-0000002
             $parts = explode('-', $ks->order_id);
-            $substring = $parts[0] . '-' . $parts[1];
 
+            $substring = $parts[0] . '-' . $parts[1];
+            // dd($substring);
             array_push($kode_faktur, $substring);
+            // array_push($kode_faktur,$ks->order_id);
             // echo $substring;
         }
 
@@ -552,8 +610,10 @@ class KeranjangController extends Controller
             $password = '';
             $orderid = $id[$i];
             // echo $orderid;
+            // dd($orderid);
             $kode_faktur = $kode_faktur[$i];
             $URL =  'https://api.sandbox.midtrans.com/v2/' . $orderid . '/status';
+            // dd($URL);
             curl_setopt($ch, CURLOPT_URL, $URL);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
             curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);

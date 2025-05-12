@@ -3,15 +3,15 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\PenjualanResource\Pages;
-use App\Filament\Resources\PenjualanResource\RelationManagers;
+use App\Models\Barang;
 use App\Models\Penjualan;
+use App\Models\Pembeli;
+use App\Models\PenjualanBarang;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 use Filament\Forms\Components\Wizard; //untuk menggunakan wizard
 use Filament\Forms\Components\TextInput; //untuk penggunaan text input
@@ -22,20 +22,11 @@ use Filament\Forms\Components\Repeater; //untuk penggunaan repeater
 use Filament\Tables\Columns\TextColumn; //untuk tampilan tabel
 use Filament\Forms\Components\Placeholder; //untuk menggunakan text holder
 use Filament\Forms\Get; //menggunakan get 
-use Filament\Forms\Set; //menggunakan set 
-use Filament\Forms\Components\Hidden; //menggunakan hidden field
 use Filament\Tables\Filters\SelectFilter; //untuk menambahkan filter
 
-// model
-use App\Models\Pembeli;
-use App\Models\Barang;
-use App\Models\Pembayaran;
-use App\Models\PenjualanBarang;
-
-// DB
 use Illuminate\Support\Facades\DB;
-// untuk dapat menggunakan action
-use Filament\Forms\Components\Actions\Action;
+use Filament\Tables\Actions\Action;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class PenjualanResource extends Resource
 {
@@ -252,6 +243,24 @@ class PenjualanResource extends Resource
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
+            ])
+            // tombol tambahan
+            ->headerActions([
+                // tombol tambahan export pdf
+                Action::make('downloadPdf')
+                    ->label('Unduh PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->color('success')
+                    ->action(function () {
+                        $penjualan = Penjualan::all();
+
+                        $pdf = Pdf::loadView('pdf.penjualan', ['penjualan' => $penjualan]);
+
+                        return response()->streamDownload(
+                            fn() => print($pdf->output()),
+                            'pelanggan-list.pdf'
+                        );
+                    })
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
